@@ -1,31 +1,42 @@
 package ru.sbt.task;
 
-import java.nio.file.AccessDeniedException;
+import java.util.concurrent.BlockingQueue;
 
-public class APIHandler {
+public class APIHandler implements Runnable{
 
     private API api;
-    private final long NANOSEC_PER_REQUEST;
-    private long timeOfPrevRequest;
+    private final int NANOSEC_PER_REQUEST;
+    private long requestCounter=0;
 
-    public APIHandler(int rps) {
+    private BlockingQueue<Request> queue;
+
+    public APIHandler(int rps, BlockingQueue<Request> queue) {
         api=new API();
         NANOSEC_PER_REQUEST=1000000000/rps;
-    }
-
-    public synchronized void proceedRequest() throws AccessDeniedException{
-        long timePassed = System.nanoTime() - timeOfPrevRequest;
-        if (timeOfPrevRequest==0 || NANOSEC_PER_REQUEST<=timePassed){
-            System.out.println("OK");
-            executeAPIFunction();
-            timeOfPrevRequest=System.nanoTime();
-        }
-        else {
-            throw new AccessDeniedException("API");
-        }
+        this.queue=queue;
     }
 
     private void executeAPIFunction(){
         api.doSomething();
+    }
+
+    @Override
+    public void run() {
+        long current_time;
+        try {
+            while (queue.take().getType().equals("GET")){
+                System.out.println("OK");
+                executeAPIFunction();
+                requestCounter++;
+                current_time = System.nanoTime();
+                while (current_time+NANOSEC_PER_REQUEST>=System.nanoTime());//busy waiting
+            }
+        }catch (InterruptedException e){
+            System.err.println("API Request is denied");
+        }
+    }
+
+    public long getRequestCounter() {
+        return requestCounter;
     }
 }
